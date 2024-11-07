@@ -110,6 +110,14 @@ use constant {
         \.raw
         $
     }x,
+    RE_VOLNAME_CLOUDINIT => qr{
+        ^
+        vm
+        - (?P<vm_id> $RE_VM_ID )
+        -cloudinit-sp- (?P<global_id> $RE_GLOBAL_ID )
+        \.raw
+        $
+    }x,
 
     RE_VOLNAME_PROXMOX_VMSTATE => qr{
         ^
@@ -638,6 +646,9 @@ sub sp_encode_volsnap_from_tags($) {
     if (sp_is_empty($tags{VTAG_DISK()})) {
         log_and_die 'A disk image should specify a disk: '.Dumper($vol);
     }
+    if ($tags{VTAG_DISK()} eq 'cloudinit') {
+        return "vm-$tags{VTAG_VM()}-cloudinit-sp-$global_id.raw";
+    }
 
     return "vm-$tags{VTAG_VM()}-disk-$tags{VTAG_DISK()}-sp-$global_id.raw";
 }
@@ -727,6 +738,20 @@ sub sp_decode_volsnap_to_tags($) {
                 VTAG_TYPE() => 'images',
                 VTAG_VM() => $vm_id,
                 VTAG_DISK() => $disk_id,
+            },
+        };
+    }
+
+    if ($volname =~ RE_VOLNAME_CLOUDINIT) {
+        my ($global_id, $vm_id) = ($+{'global_id'}, $+{'vm_id'});
+        return {
+            'name' => "~$global_id",
+            'snapshot' => JSON::false,
+            'globalId' => $global_id,
+            'tags' => {
+                VTAG_TYPE() => 'images',
+                VTAG_VM() => $vm_id,
+                VTAG_DISK() => 'cloudinit',
             },
         };
     }
@@ -969,7 +994,7 @@ sub find_free_disk($ $) {
             ($vol->{'tags'}->{VTAG_VM()} // '') eq $vm_id;
 
         my $current_str = $vol->{'tags'}->{VTAG_DISK()};
-        if (defined $current_str && $current_str ne 'state') {
+        if (defined $current_str && $current_str ne 'state' && $current_str ne 'cloudinit') {
             my $current = int $current_str;
             if ($current >= $disk_id) {
                 $disk_id = $current + 1;
@@ -999,6 +1024,11 @@ sub alloc_image {
                 VTAG_VM() => $state_vmid,
                 VTAG_DISK() => 'state',
                 VTAG_SNAP() => $state_snapshot,
+            )
+        } elsif (defined $name && $name =~ m/^vm-\d*-cloudinit/) {
+            (
+                VTAG_VM() => "$vmid",
+                VTAG_DISK() => 'cloudinit',
             )
         } elsif (defined $vmid) {
             my $disk_id = find_free_disk($cfg, $vmid);
@@ -1332,7 +1362,11 @@ sub clone_image {
         my ($current_tags) = @_;
         my $disk_id;
         if (defined $current_tags->{VTAG_DISK()}) {
-            $disk_id = find_free_disk($cfg, $vmid);
+            if ($current_tags->{VTAG_DISK} eq 'cloudinit') {
+                $disk_id = 'cloudinit';
+            } else {
+                $disk_id = find_free_disk($cfg, $vmid);
+            }
         }
 
         return {

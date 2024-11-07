@@ -1,0 +1,11 @@
+--- /usr/share/perl5/PVE/QemuServer/Drive.pm.orig	2024-11-07 23:57:33.232266309 +0700
++++ /usr/share/perl5/PVE/QemuServer/Drive.pm	2024-11-08 00:00:06.018262667 +0700
+@@ -568,7 +568,7 @@
+ 
+ sub drive_is_cloudinit {
+     my ($drive) = @_;
+-    return $drive->{file} =~ m@[:/](?:vm-\d+-)?cloudinit(?:\.$QEMU_FORMAT_RE)?$@;
++    return $drive->{file} =~ m@[:/](?:vm-\d+-)?cloudinit(?:-.*)?(?:\.$QEMU_FORMAT_RE)?$@;
+ }
+ 
+ sub drive_is_cdrom {
